@@ -18,7 +18,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
   const containerRef = useRef<HTMLDivElement>(null);
   const spreadsheetRef = useRef<AnySpreadsheet>(null);
   const metaRef = useRef<ReturnType<typeof bravaToXSpreadsheet>['meta'] | null>(null);
-  const [loadError, setLoadError] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const commitTableData = useDocumentStore((s) => s.commitTableData);
   const setActiveTableEditor = useDocumentStore((s) => s.setActiveTableEditor);
@@ -54,12 +54,12 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
 
     (async () => {
       try {
-        await import('x-data-spreadsheet/dist/xspreadsheet.js');
+        const mod = await import('x-data-spreadsheet');
         if (aborted) return;
 
-        const xSpreadsheet = (window as any).x_spreadsheet;
-        if (typeof xSpreadsheet !== 'function') {
-          throw new Error('x-data-spreadsheet module failed to register on window');
+        const Spreadsheet = mod.default;
+        if (typeof Spreadsheet !== 'function') {
+          throw new Error(`Module loaded but default export is ${typeof Spreadsheet}, not a constructor`);
         }
 
         container.innerHTML = '';
@@ -71,7 +71,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
         metaRef.current = meta;
 
         const opts = {
-          mode: 'edit',
+          mode: 'edit' as const,
           showToolbar: false,
           showGrid: true,
           showContextmenu: true,
@@ -92,7 +92,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
           },
         };
 
-        const spreadsheet: AnySpreadsheet = xSpreadsheet(container, opts);
+        const spreadsheet: AnySpreadsheet = new Spreadsheet(container, opts);
 
         if (aborted) {
           container.innerHTML = '';
@@ -110,7 +110,8 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
       } catch (err) {
         if (!aborted) {
           console.error('Failed to initialize table editor:', err);
-          setLoadError(true);
+          const msg = err instanceof Error ? err.message : String(err);
+          setLoadError(msg);
         }
       }
     })();
@@ -159,7 +160,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
   const editorWidth = Math.max(totalWidth + 60, fragment.width * zoom);
   const editorHeight = Math.min(totalHeight + 40, 600);
 
-  if (loadError) {
+  if (loadError !== null) {
     return (
       <div
         style={{
@@ -181,13 +182,16 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
         }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div style={{ textAlign: 'center' }}>
+        <div style={{ textAlign: 'center', maxWidth: '90%' }}>
           <div style={{ fontWeight: 600, color: '#334155', marginBottom: 8 }}>
             Unable to load table editor
           </div>
+          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 12, wordBreak: 'break-word' }}>
+            {loadError}
+          </div>
           <button
             onClick={() => {
-              setLoadError(false);
+              setLoadError(null);
               setActiveTableEditor(null);
             }}
             style={{

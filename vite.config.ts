@@ -10,7 +10,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['x-data-spreadsheet/dist/xspreadsheet.js'],
+    include: ['x-data-spreadsheet'],
   },
   server: {
     host: '0.0.0.0',

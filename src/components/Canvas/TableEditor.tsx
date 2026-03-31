@@ -1,15 +1,10 @@
-import { useRef, useEffect, useCallback } from 'react';
-// @ts-ignore - import pre-built bundle (UMD) to avoid LESS dependency
-import * as xSpreadsheetModule from 'x-data-spreadsheet/dist/xspreadsheet.js';
-const Spreadsheet = (xSpreadsheetModule as any).default || xSpreadsheetModule;
-import 'x-data-spreadsheet/dist/xspreadsheet.css';
+import { useRef, useEffect, useCallback, useState } from 'react';
 import { useDocumentStore } from '../../store/document-store';
 import { bravaToXSpreadsheet, xSpreadsheetToBrava } from '../../engine/bridge/table-bridge';
 import type { TableBlock } from '../../types/document';
 import type { BlockFragment } from '../../engine/layout/layout-engine';
 import { FloatingToolbar } from './FloatingToolbar';
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySpreadsheet = any;
 
 interface TableEditorProps {
@@ -23,6 +18,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
   const containerRef = useRef<HTMLDivElement>(null);
   const spreadsheetRef = useRef<AnySpreadsheet>(null);
   const metaRef = useRef<ReturnType<typeof bravaToXSpreadsheet>['meta'] | null>(null);
+  const [loadError, setLoadError] = useState(false);
 
   const commitTableData = useDocumentStore((s) => s.commitTableData);
   const setActiveTableEditor = useDocumentStore((s) => s.setActiveTableEditor);
@@ -33,12 +29,19 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
   const blockId = fragment.blockId;
 
   const commitAndClose = useCallback(() => {
-    if (!spreadsheetRef.current || !metaRef.current) return;
+    if (!spreadsheetRef.current || !metaRef.current) {
+      setActiveTableEditor(null);
+      return;
+    }
     const xs = spreadsheetRef.current as AnySpreadsheet;
-    const sheetData = xs.getData();
-    if (Array.isArray(sheetData) && sheetData.length > 0) {
-      const updatedTable = xSpreadsheetToBrava(sheetData[0], metaRef.current);
-      commitTableData(sectionId, blockId, updatedTable);
+    try {
+      const sheetData = xs.getData();
+      if (Array.isArray(sheetData) && sheetData.length > 0) {
+        const updatedTable = xSpreadsheetToBrava(sheetData[0], metaRef.current!);
+        commitTableData(sectionId, blockId, updatedTable);
+      }
+    } catch {
+      // data commit failed silently -- table data unchanged
     }
     setActiveTableEditor(null);
   }, [sectionId, blockId, commitTableData, setActiveTableEditor]);
@@ -47,49 +50,75 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
     const container = containerRef.current;
     if (!container) return;
 
-    container.innerHTML = '';
+    let aborted = false;
 
-    const totalWidth = table.cols.reduce((sum, c) => sum + (c.width || 100), 0);
-    const totalHeight = table.rows.reduce((sum, r) => sum + (r.hidden ? 0 : (r.height || 28)), 0);
+    (async () => {
+      try {
+        const mod = await import('x-data-spreadsheet/dist/xspreadsheet.js');
+        if (aborted) return;
 
-    const { data, meta } = bravaToXSpreadsheet(table);
-    metaRef.current = meta;
+        const Spreadsheet = (mod as any).default || mod;
 
-    const opts = {
-      mode: 'edit',
-      showToolbar: false,
-      showGrid: true,
-      showContextmenu: true,
-      showBottomBar: false,
-      view: {
-        height: () => Math.min(totalHeight + 40, 600),
-        width: () => Math.min(totalWidth + 60, container.clientWidth),
-      },
-      row: {
-        len: table.rows.length,
-        height: 28,
-      },
-      col: {
-        len: table.cols.length,
-        width: 100,
-        indexWidth: 50,
-        minWidth: 40,
-      },
-    };
+        container.innerHTML = '';
 
-    const spreadsheet: AnySpreadsheet = new Spreadsheet(container, opts as any);
+        const totalWidth = table.cols.reduce((sum, c) => sum + (c.width || 100), 0);
+        const totalHeight = table.rows.reduce((sum, r) => sum + (r.hidden ? 0 : (r.height || 28)), 0);
 
-    spreadsheet.loadData([data as any]);
+        const { data, meta } = bravaToXSpreadsheet(table);
+        metaRef.current = meta;
 
-    spreadsheet.on('cell-selected' as any, (_cell: any, ri: number, ci: number) => {
-      selectCell(ri, ci);
-    });
+        const opts = {
+          mode: 'edit',
+          showToolbar: false,
+          showGrid: true,
+          showContextmenu: true,
+          showBottomBar: false,
+          view: {
+            height: () => Math.min(totalHeight + 40, 600),
+            width: () => Math.min(totalWidth + 60, container.clientWidth),
+          },
+          row: {
+            len: table.rows.length,
+            height: 28,
+          },
+          col: {
+            len: table.cols.length,
+            width: 100,
+            indexWidth: 50,
+            minWidth: 40,
+          },
+        };
 
-    setActiveTableEditor({ sectionId, blockId, meta });
-    spreadsheetRef.current = spreadsheet;
+        const spreadsheet: AnySpreadsheet = new Spreadsheet(container, opts as any);
+
+        if (aborted) {
+          container.innerHTML = '';
+          return;
+        }
+
+        spreadsheet.loadData([data as any]);
+
+        spreadsheet.on('cell-selected' as any, (_cell: any, ri: number, ci: number) => {
+          selectCell(ri, ci);
+        });
+
+        setActiveTableEditor({ sectionId, blockId, meta });
+        spreadsheetRef.current = spreadsheet;
+      } catch (err) {
+        if (!aborted) {
+          console.error('Failed to initialize table editor:', err);
+          setLoadError(true);
+        }
+      }
+    })();
 
     return () => {
+      aborted = true;
       spreadsheetRef.current = null;
+      metaRef.current = null;
+      if (container) {
+        container.innerHTML = '';
+      }
     };
   }, []);
 
@@ -108,12 +137,13 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
       }
     };
 
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
       document.addEventListener('keydown', handleEscape);
     }, 100);
 
     return () => {
+      clearTimeout(timer);
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleEscape);
     };
@@ -125,6 +155,55 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
   const totalHeight = table.rows.reduce((sum, r) => sum + (r.hidden ? 0 : (r.height || 28)), 0);
   const editorWidth = Math.max(totalWidth + 60, fragment.width * zoom);
   const editorHeight = Math.min(totalHeight + 40, 600);
+
+  if (loadError) {
+    return (
+      <div
+        style={{
+          position: 'absolute',
+          left: editorLeft,
+          top: editorTop,
+          width: editorWidth,
+          height: editorHeight,
+          zIndex: 60,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: '#ffffff',
+          borderRadius: 4,
+          boxShadow: '0 4px 24px rgba(0, 0, 0, 0.15), 0 0 0 2px #dc2626',
+          color: '#64748b',
+          fontSize: 13,
+          fontFamily: 'Inter, system-ui, sans-serif',
+        }}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontWeight: 600, color: '#334155', marginBottom: 8 }}>
+            Unable to load table editor
+          </div>
+          <button
+            onClick={() => {
+              setLoadError(false);
+              setActiveTableEditor(null);
+            }}
+            style={{
+              padding: '6px 16px',
+              borderRadius: 6,
+              border: '1px solid #e2e8f0',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: 12,
+              fontWeight: 500,
+              cursor: 'pointer',
+            }}
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>

@@ -4,6 +4,7 @@ import { renderPage } from '../../engine/canvas/page-renderer';
 import { A4_WIDTH_PX, A4_HEIGHT_PX } from '../../engine/layout/constants';
 import type { BlockFragment } from '../../engine/layout/layout-engine';
 import type { TableBlock } from '../../types/document';
+import { ErrorBoundary } from '../ErrorBoundary';
 
 const TableEditor = lazy(() =>
   import('./TableEditor').then((m) => ({ default: m.TableEditor }))
@@ -160,14 +161,19 @@ export function DocumentCanvas() {
               onMouseLeave={() => setHoveredBlock(null)}
             />
             {activeEditor && activeEditor.pageIndex === page.pageIndex && (
-              <Suspense fallback={null}>
-                <TableEditor
-                  fragment={activeEditor.fragment}
-                  sectionId={activeEditor.sectionId}
-                  zoom={zoom}
-                  canvasRect={canvasRefs.current.get(page.pageIndex)?.getBoundingClientRect() || new DOMRect()}
-                />
-              </Suspense>
+              <ErrorBoundary
+                key={activeEditor.fragment.blockId}
+                onReset={() => setActiveEditor(null)}
+              >
+                <Suspense fallback={null}>
+                  <TableEditor
+                    fragment={activeEditor.fragment}
+                    sectionId={activeEditor.sectionId}
+                    zoom={zoom}
+                    canvasRect={canvasRefs.current.get(page.pageIndex)?.getBoundingClientRect() || new DOMRect()}
+                  />
+                </Suspense>
+              </ErrorBoundary>
             )}
           </div>
           <div className="page-number-label">

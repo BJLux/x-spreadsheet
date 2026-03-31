@@ -1,14 +1,20 @@
 import { create } from 'zustand';
-import type { BravaDocument, Section, Block, TableBlock, TextBlock } from '../types/document';
-import type { CellStyle, TableCell } from '../types/table';
+import type { BravaDocument, Section, Block, TableBlock } from '../types/document';
+import type { CellStyle, TableCell, TableData } from '../types/table';
 import { computeLayout, type PagePlan } from '../engine/layout/layout-engine';
-import { evaluateFormula } from '../engine/formula/evaluator';
+import type { BravaMetaSideChannel } from '../engine/bridge/table-bridge';
 
 interface EditorSelection {
   blockId: string | null;
   sectionId: string | null;
   cellRow: number | null;
   cellCol: number | null;
+}
+
+interface ActiveTableEditor {
+  sectionId: string;
+  blockId: string;
+  meta: BravaMetaSideChannel;
 }
 
 interface DocumentState {
@@ -22,10 +28,10 @@ interface DocumentState {
   documentMapOpen: boolean;
   undoStack: string[];
   redoStack: string[];
+  activeTableEditor: ActiveTableEditor | null;
 
   loadDocument: (doc: BravaDocument) => void;
   recomputeLayout: () => void;
-  recalculateFormulas: () => void;
 
   selectBlock: (sectionId: string, blockId: string) => void;
   selectCell: (row: number, col: number) => void;
@@ -33,6 +39,9 @@ interface DocumentState {
   startEditingCell: (row: number, col: number) => void;
   stopEditingCell: () => void;
   setHoveredBlock: (blockId: string | null) => void;
+
+  setActiveTableEditor: (editor: ActiveTableEditor | null) => void;
+  commitTableData: (sectionId: string, blockId: string, tableData: TableData) => void;
 
   setCellValue: (sectionId: string, blockId: string, row: number, col: number, value: string) => void;
   setCellStyle: (sectionId: string, blockId: string, row: number, col: number, style: Partial<CellStyle>) => void;
@@ -107,31 +116,6 @@ function findBlockInDocument(doc: BravaDocument, sectionId: string, blockId: str
   return { section, block: section.blocks[blockIndex], blockIndex };
 }
 
-function recalcDocument(doc: BravaDocument): BravaDocument {
-  for (const section of doc.sections) {
-    for (const block of section.blocks) {
-      if (block.type === 'table') {
-        const table = block.table;
-        for (let ri = 0; ri < table.rows.length; ri++) {
-          for (let ci = 0; ci < table.rows[ri].cells.length; ci++) {
-            const cell = table.rows[ri].cells[ci];
-            if (cell.formula) {
-              cell.computedValue = evaluateFormula(cell.formula, (r, c) => {
-                const row = table.rows[r];
-                if (!row) return '';
-                const targetCell = row.cells[c];
-                if (!targetCell) return '';
-                return targetCell.formula ? targetCell.computedValue : targetCell.value;
-              });
-            }
-          }
-        }
-      }
-    }
-  }
-  return doc;
-}
-
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   document: null,
   pagePlan: null,
@@ -143,11 +127,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   documentMapOpen: true,
   undoStack: [],
   redoStack: [],
+  activeTableEditor: null,
 
   loadDocument: (doc) => {
-    const processed = recalcDocument(doc);
-    const pagePlan = computeLayout(processed);
-    set({ document: processed, pagePlan, undoStack: [], redoStack: [] });
+    const pagePlan = computeLayout(doc);
+    set({ document: doc, pagePlan, undoStack: [], redoStack: [] });
   },
 
   recomputeLayout: () => {
@@ -155,14 +139,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (!doc) return;
     const pagePlan = computeLayout(doc);
     set({ pagePlan });
-  },
-
-  recalculateFormulas: () => {
-    const { document: doc } = get();
-    if (!doc) return;
-    const processed = recalcDocument({ ...doc });
-    const pagePlan = computeLayout(processed);
-    set({ document: processed, pagePlan });
   },
 
   selectBlock: (sectionId, blockId) => {
@@ -199,6 +175,32 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     set({ hoveredBlockId: blockId });
   },
 
+  setActiveTableEditor: (editor) => {
+    set({ activeTableEditor: editor });
+  },
+
+  commitTableData: (sectionId, blockId, tableData) => {
+    const { document: doc } = get();
+    if (!doc) return;
+
+    const snapshot = JSON.stringify(doc);
+
+    const result = findBlockInDocument(doc, sectionId, blockId);
+    if (!result || result.block.type !== 'table') return;
+
+    const tableBlock = result.block as TableBlock;
+    tableBlock.table = tableData;
+
+    const pagePlan = computeLayout(doc);
+
+    set((state) => ({
+      document: { ...doc },
+      pagePlan,
+      undoStack: [...state.undoStack.slice(-49), snapshot],
+      redoStack: [],
+    }));
+  },
+
   setCellValue: (sectionId, blockId, row, col, value) => {
     const { document: doc } = get();
     if (!doc) return;
@@ -220,17 +222,17 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     if (value.startsWith('=')) {
       cell.formula = value;
       cell.value = '';
+      cell.computedValue = '';
     } else {
       cell.formula = '';
       cell.value = value;
       cell.computedValue = value;
     }
 
-    const processed = recalcDocument({ ...doc });
-    const pagePlan = computeLayout(processed);
+    const pagePlan = computeLayout(doc);
 
     set((state) => ({
-      document: processed,
+      document: { ...doc },
       pagePlan,
       undoStack: [...state.undoStack.slice(-49), snapshot],
       redoStack: [],
@@ -433,9 +435,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       cells: Array.from({ length: colCount }, () => createDefaultCell()),
     };
     tableBlock.table.rows.splice(afterRow + 1, 0, newRow);
-    const processed = recalcDocument({ ...doc });
-    const pagePlan = computeLayout(processed);
-    set({ document: processed, pagePlan });
+    const pagePlan = computeLayout(doc);
+    set({ document: { ...doc }, pagePlan });
   },
 
   addTableCol: (sectionId, blockId, afterCol) => {
@@ -460,9 +461,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     const tableBlock = result.block as TableBlock;
     if (tableBlock.table.rows.length <= 1) return;
     tableBlock.table.rows.splice(rowIndex, 1);
-    const processed = recalcDocument({ ...doc });
-    const pagePlan = computeLayout(processed);
-    set({ document: processed, pagePlan });
+    const pagePlan = computeLayout(doc);
+    set({ document: { ...doc }, pagePlan });
   },
 
   removeTableCol: (sectionId, blockId, colIndex) => {

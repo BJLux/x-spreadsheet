@@ -12,8 +12,9 @@
     "@supabase/supabase-js": "^2.49.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "zustand": "^4.5.5",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "x-data-spreadsheet": "^1.1.9",
+    "zustand": "^4.5.5"
   },
   "devDependencies": {
     "@types/react": "^18.3.12",

@@ -1,7 +1,17 @@
 import { useDocumentStore } from '../store/document-store';
 import { useCallback, useState, useEffect } from 'react';
 import type { TableBlock } from '../types/document';
-import { indexToColumn } from '../engine/formula/evaluator';
+
+function indexToColumn(index: number): string {
+  let result = '';
+  let n = index + 1;
+  while (n > 0) {
+    n--;
+    result = String.fromCharCode(65 + (n % 26)) + result;
+    n = Math.floor(n / 26);
+  }
+  return result;
+}
 
 export function FormulaBar() {
   const doc = useDocumentStore((s) => s.document);

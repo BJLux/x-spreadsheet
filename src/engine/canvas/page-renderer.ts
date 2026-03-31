@@ -12,6 +12,7 @@ export interface RenderOptions {
   editingCell: { row: number; col: number } | null;
   hoveredBlockId: string | null;
   zoom: number;
+  activeTableBlockId?: string | null;
 }
 
 export function renderPage(
@@ -26,6 +27,9 @@ export function renderPage(
   renderHeaderFooter(dc, page);
 
   for (const fragment of page.fragments) {
+    if (options.activeTableBlockId && fragment.blockId === options.activeTableBlockId) {
+      continue;
+    }
     renderFragment(dc, fragment, options);
   }
 

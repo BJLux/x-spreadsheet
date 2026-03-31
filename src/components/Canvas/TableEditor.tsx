@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from 'react';
-// @ts-ignore - import pre-built bundle to avoid LESS dependency
-import Spreadsheet from 'x-data-spreadsheet/dist/xspreadsheet.js';
+// @ts-ignore - import pre-built bundle (UMD) to avoid LESS dependency
+import * as xSpreadsheetModule from 'x-data-spreadsheet/dist/xspreadsheet.js';
+const Spreadsheet = (xSpreadsheetModule as any).default || xSpreadsheetModule;
 import 'x-data-spreadsheet/dist/xspreadsheet.css';
 import { useDocumentStore } from '../../store/document-store';
 import { bravaToXSpreadsheet, xSpreadsheetToBrava } from '../../engine/bridge/table-bridge';

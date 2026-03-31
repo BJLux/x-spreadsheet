@@ -1,6 +1,6 @@
 import { useRef, useEffect, useCallback } from 'react';
 // @ts-ignore - import pre-built bundle to avoid LESS dependency
-import Spreadsheet from 'x-data-spreadsheet/dist/xspreadsheet';
+import Spreadsheet from 'x-data-spreadsheet/dist/xspreadsheet.js';
 import 'x-data-spreadsheet/dist/xspreadsheet.css';
 import { useDocumentStore } from '../../store/document-store';
 import { bravaToXSpreadsheet, xSpreadsheetToBrava } from '../../engine/bridge/table-bridge';

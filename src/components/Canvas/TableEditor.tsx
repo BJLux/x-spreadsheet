@@ -54,10 +54,13 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
 
     (async () => {
       try {
-        const mod = await import('x-data-spreadsheet/dist/xspreadsheet.js');
+        await import('x-data-spreadsheet/dist/xspreadsheet.js');
         if (aborted) return;
 
-        const Spreadsheet = (mod as any).default || mod;
+        const xSpreadsheet = (window as any).x_spreadsheet;
+        if (typeof xSpreadsheet !== 'function') {
+          throw new Error('x-data-spreadsheet module failed to register on window');
+        }
 
         container.innerHTML = '';
 
@@ -89,7 +92,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
           },
         };
 
-        const spreadsheet: AnySpreadsheet = new Spreadsheet(container, opts as any);
+        const spreadsheet: AnySpreadsheet = xSpreadsheet(container, opts);
 
         if (aborted) {
           container.innerHTML = '';

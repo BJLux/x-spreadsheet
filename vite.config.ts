@@ -7,6 +7,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'x-data-spreadsheet/dist/xspreadsheet.js': path.resolve(__dirname, 'node_modules/x-data-spreadsheet/dist/xspreadsheet.js'),
+      'x-data-spreadsheet/dist/xspreadsheet.css': path.resolve(__dirname, 'node_modules/x-data-spreadsheet/dist/xspreadsheet.css'),
     },
   },
   optimizeDeps: {

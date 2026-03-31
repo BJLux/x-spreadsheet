@@ -1,10 +1,13 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+import { useRef, useEffect, useCallback, useState, lazy, Suspense } from 'react';
 import { useDocumentStore } from '../../store/document-store';
 import { renderPage } from '../../engine/canvas/page-renderer';
 import { A4_WIDTH_PX, A4_HEIGHT_PX } from '../../engine/layout/constants';
 import type { BlockFragment } from '../../engine/layout/layout-engine';
 import type { TableBlock } from '../../types/document';
-import { TableEditor } from './TableEditor';
+
+const TableEditor = lazy(() =>
+  import('./TableEditor').then((m) => ({ default: m.TableEditor }))
+);
 
 interface ActiveEditorState {
   fragment: BlockFragment;
@@ -157,12 +160,14 @@ export function DocumentCanvas() {
               onMouseLeave={() => setHoveredBlock(null)}
             />
             {activeEditor && activeEditor.pageIndex === page.pageIndex && (
-              <TableEditor
-                fragment={activeEditor.fragment}
-                sectionId={activeEditor.sectionId}
-                zoom={zoom}
-                canvasRect={canvasRefs.current.get(page.pageIndex)?.getBoundingClientRect() || new DOMRect()}
-              />
+              <Suspense fallback={null}>
+                <TableEditor
+                  fragment={activeEditor.fragment}
+                  sectionId={activeEditor.sectionId}
+                  zoom={zoom}
+                  canvasRect={canvasRefs.current.get(page.pageIndex)?.getBoundingClientRect() || new DOMRect()}
+                />
+              </Suspense>
             )}
           </div>
           <div className="page-number-label">

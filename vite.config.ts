@@ -5,9 +5,13 @@ import path from 'path';
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+      {
+        find: /^x-data-spreadsheet$/,
+        replacement: path.resolve(__dirname, 'node_modules/x-data-spreadsheet/dist/xspreadsheet.js'),
+      },
+    ],
   },
   optimizeDeps: {
     include: ['x-data-spreadsheet'],

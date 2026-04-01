@@ -54,12 +54,14 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
 
     (async () => {
       try {
-        const mod = await import('x-data-spreadsheet');
+        await import('x-data-spreadsheet');
         if (aborted) return;
 
-        const Spreadsheet = mod.default;
-        if (typeof Spreadsheet !== 'function') {
-          throw new Error(`Module loaded but default export is ${typeof Spreadsheet}, not a constructor`);
+        const xSpreadsheet = (window as any).x_spreadsheet;
+        if (typeof xSpreadsheet !== 'function') {
+          throw new Error(
+            `x-data-spreadsheet loaded but window.x_spreadsheet is ${typeof xSpreadsheet}`
+          );
         }
 
         container.innerHTML = '';
@@ -71,7 +73,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
         metaRef.current = meta;
 
         const opts = {
-          mode: 'edit' as const,
+          mode: 'edit',
           showToolbar: false,
           showGrid: true,
           showContextmenu: true,
@@ -92,7 +94,7 @@ export function TableEditor({ fragment, sectionId, zoom, canvasRect }: TableEdit
           },
         };
 
-        const spreadsheet: AnySpreadsheet = new Spreadsheet(container, opts);
+        const spreadsheet: AnySpreadsheet = xSpreadsheet(container, opts);
 
         if (aborted) {
           container.innerHTML = '';
